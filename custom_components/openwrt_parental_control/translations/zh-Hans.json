@@ -1,0 +1,207 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "连接 OpenWrt 路由器",
+        "description": "请输入 OpenWrt 路由器的 ubus JSON-RPC 连接参数。",
+        "data": {
+          "host": "路由器 IP 地址",
+          "port": "端口",
+          "ssl": "使用 HTTPS (SSL)",
+          "username": "用户名",
+          "password": "密码",
+          "verify_ssl": "验证 SSL 证书"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "无法连接到 OpenWrt 路由器，请检查 IP 地址、端口及网络连通性。",
+      "invalid_auth": "身份认证失败，请检查 OpenWrt 用户名与密码是否正确。",
+      "unknown": "发生未知错误，请查看日志。"
+    },
+    "abort": {
+      "already_configured": "该路由器已配置，请勿重复添加。"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "OpenWrt 家长控制选项",
+        "menu_options": {
+          "settings": "全局轮询间隔设置",
+          "profile_select": "管理成员档案 (新增 / 编辑 / 删除)"
+        }
+      },
+      "settings": {
+        "title": "全局轮询设置",
+        "data": {
+          "poll_interval": "路由器轮询间隔 (秒)"
+        }
+      },
+      "profile_select": {
+        "title": "选择档案",
+        "description": "选择要编辑的成员档案，或选择「+ 新增成员档案」。",
+        "data": {
+          "profile_action": "目标档案"
+        }
+      },
+      "profile_edit": {
+        "title": "配置成员档案",
+        "description": "设置成员姓名并勾选分配需要管控的设备（时段与开关可在设备卡片上直接调节）。",
+        "data": {
+          "name": "成员姓名",
+          "mac_addresses": "绑定的受控设备",
+          "manual_macs": "或手动输入设备 MAC 地址 (逗号分隔，可选)",
+          "delete_profile": "删除此成员档案"
+        }
+      }
+    },
+    "error": {
+      "invalid_mac": "输入的 MAC 地址格式不正确，请输入形如 AA:BB:CC:DD:EE:FF 的有效地址。"
+    }
+  },
+  "entity": {
+    "switch": {
+      "profile_schedule": {
+        "name": "时段控制"
+      },
+      "profile_pause": {
+        "name": "暂停上网"
+      }
+    },
+    "time": {
+      "profile_schedule_start": {
+        "name": "开始时间"
+      },
+      "profile_schedule_stop": {
+        "name": "结束时间"
+      }
+    },
+    "select": {
+      "profile_schedule_days": {
+        "name": "生效周期",
+        "state": {
+          "weekdays": "工作日",
+          "everyday": "每日"
+        }
+      }
+    },
+    "binary_sensor": {
+      "profile_blocked": {
+        "name": "网络封锁状态",
+        "state": {
+          "off": "正常",
+          "on": "已封锁"
+        }
+      },
+      "device_blocked": {
+        "name": "{device_name} 封锁状态",
+        "state": {
+          "off": "正常",
+          "on": "已封锁"
+        }
+      }
+    },
+    "sensor": {
+      "router_blocked_count": {
+        "name": "受限设备总数"
+      }
+    }
+  },
+  "services": {
+    "pause_profile": {
+      "name": "暂停上网",
+      "description": "临时或永久封锁该成员档案下所有设备的互联网连接。",
+      "fields": {
+        "profile_id": {
+          "name": "成员档案 ID",
+          "description": "需要暂停上网的成员档案 ID。"
+        },
+        "duration": {
+          "name": "暂停时长",
+          "description": "暂停上网的时长（如 15m, 30m, 60m, until_tomorrow, indefinite）。"
+        },
+        "entry_id": {
+          "name": "路由器配置 ID",
+          "description": "目标路由器实例 ID（仅在配置多个路由器时需指定）。"
+        }
+      }
+    },
+    "resume_profile": {
+      "name": "恢复上网",
+      "description": "手动解除成员档案的暂停上网状态。",
+      "fields": {
+        "profile_id": {
+          "name": "成员档案 ID",
+          "description": "需要恢复上网的成员档案 ID。"
+        },
+        "entry_id": {
+          "name": "路由器配置 ID",
+          "description": "目标路由器实例 ID（可选）。"
+        }
+      }
+    },
+    "set_profile_enabled": {
+      "name": "切换家长控制规则开关",
+      "description": "切换指定档案的规则生效或临时豁免管控（包括定时计划、暂停状态）。",
+      "fields": {
+        "profile_id": {
+          "name": "成员档案 ID",
+          "description": "需要设置的成员档案 ID。"
+        },
+        "enabled": {
+          "name": "规则启用状态",
+          "description": "为 True 则生效管控规则；为 False 则豁免所有规则直接放行上网。"
+        },
+        "entry_id": {
+          "name": "路由器配置 ID",
+          "description": "目标路由器实例 ID。"
+        }
+      }
+    },
+    "save_profile": {
+      "name": "保存或更新成员档案",
+      "description": "创建新的家长控制档案或更新现有档案的配置信息。",
+      "fields": {
+        "name": {
+          "name": "成员姓名",
+          "description": "档案名称或孩子姓名。"
+        },
+        "profile_id": {
+          "name": "成员档案 ID",
+          "description": "可选。留空将自动生成新档案。"
+        },
+        "mac_addresses": {
+          "name": "绑定设备 MAC 列表",
+          "description": "归属该成员的设备 MAC 地址列表。"
+        },
+        "is_enabled": {
+          "name": "启用规则管控",
+          "description": "是否对该档案生效管控限制。"
+        },
+        "schedule": {
+          "name": "周期性定时断网计划",
+          "description": "包含 active_days, start_time, stop_time, enabled 的计划对象。"
+        },
+        "entry_id": {
+          "name": "路由器配置 ID",
+          "description": "目标路由器实例 ID。"
+        }
+      }
+    },
+    "delete_profile": {
+      "name": "删除成员档案",
+      "description": "删除指定的成员档案并解除路由器上的网络封锁规则。",
+      "fields": {
+        "profile_id": {
+          "name": "成员档案 ID",
+          "description": "要删除的成员档案 ID。"
+        },
+        "entry_id": {
+          "name": "路由器配置 ID",
+          "description": "目标路由器实例 ID。"
+        }
+      }
+    }
+  }
+}

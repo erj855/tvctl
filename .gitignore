@@ -1,0 +1,49 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+.venv/
+env/
+venv/
+ENV/
+
+# Home Assistant testing & local cache
+.storage/
+*.log
+home-assistant.log
+home-assistant_v2.db
+
+# macOS & OS artifacts
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+
+# Editor & IDE settings
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# HACS artifacts
+hacs.zip

@@ -1,0 +1,207 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to OpenWrt Router",
+        "description": "Provide the ubus JSON-RPC connection details for your OpenWrt router.",
+        "data": {
+          "host": "Router IP Address",
+          "port": "Port",
+          "ssl": "Use HTTPS (SSL)",
+          "username": "Username",
+          "password": "Password",
+          "verify_ssl": "Verify SSL Certificate"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to OpenWrt router. Check IP address, port, and network reachability.",
+      "invalid_auth": "Authentication failed. Check your OpenWrt username and password.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This router is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "OpenWrt Parental Controls Options",
+        "menu_options": {
+          "settings": "Global Polling Interval Settings",
+          "profile_select": "Manage Profiles (Add / Edit / Remove)"
+        }
+      },
+      "settings": {
+        "title": "Global Polling Settings",
+        "data": {
+          "poll_interval": "Router Polling Interval (seconds)"
+        }
+      },
+      "profile_select": {
+        "title": "Select Profile",
+        "description": "Choose a profile to edit or select '+ Add New Profile'.",
+        "data": {
+          "profile_action": "Target Profile"
+        }
+      },
+      "profile_edit": {
+        "title": "Configure Profile",
+        "description": "Set member name and select assigned devices to manage (schedule times are controlled directly on the device card).",
+        "data": {
+          "name": "Member Name",
+          "mac_addresses": "Assigned Devices",
+          "manual_macs": "Or Enter MACs Manually (comma-separated, optional)",
+          "delete_profile": "Delete this profile"
+        }
+      }
+    },
+    "error": {
+      "invalid_mac": "Invalid MAC address format. Expected format like AA:BB:CC:DD:EE:FF."
+    }
+  },
+  "entity": {
+    "switch": {
+      "profile_schedule": {
+        "name": "Schedule Control"
+      },
+      "profile_pause": {
+        "name": "Internet Pause"
+      }
+    },
+    "time": {
+      "profile_schedule_start": {
+        "name": "Start Time"
+      },
+      "profile_schedule_stop": {
+        "name": "Stop Time"
+      }
+    },
+    "select": {
+      "profile_schedule_days": {
+        "name": "Schedule Days",
+        "state": {
+          "weekdays": "Weekdays",
+          "everyday": "Everyday"
+        }
+      }
+    },
+    "binary_sensor": {
+      "profile_blocked": {
+        "name": "Internet Status",
+        "state": {
+          "off": "Unblocked",
+          "on": "Blocked"
+        }
+      },
+      "device_blocked": {
+        "name": "{device_name} Status",
+        "state": {
+          "off": "Normal",
+          "on": "Blocked"
+        }
+      }
+    },
+    "sensor": {
+      "router_blocked_count": {
+        "name": "Blocked Devices Count"
+      }
+    }
+  },
+  "services": {
+    "pause_profile": {
+      "name": "Pause Internet Access",
+      "description": "Temporarily or indefinitely blocks internet access for all devices in a parental profile.",
+      "fields": {
+        "profile_id": {
+          "name": "Profile ID",
+          "description": "The ID of the parental control profile to pause."
+        },
+        "duration": {
+          "name": "Pause Duration",
+          "description": "How long to pause internet access."
+        },
+        "entry_id": {
+          "name": "Config Entry ID",
+          "description": "Target router instance ID (optional if only one OpenWrt router is configured)."
+        }
+      }
+    },
+    "resume_profile": {
+      "name": "Resume Internet Access",
+      "description": "Manually unpauses internet access for a parental profile.",
+      "fields": {
+        "profile_id": {
+          "name": "Profile ID",
+          "description": "The ID of the parental control profile to resume."
+        },
+        "entry_id": {
+          "name": "Config Entry ID",
+          "description": "Target router instance ID (optional if only one router configured)."
+        }
+      }
+    },
+    "set_profile_enabled": {
+      "name": "Set Profile Rule Enforcement",
+      "description": "Toggles whether rules (schedule and pauses) are enforced or bypassed.",
+      "fields": {
+        "profile_id": {
+          "name": "Profile ID",
+          "description": "The ID of the parental control profile."
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "True to enforce rules; False to bypass all rules for this profile."
+        },
+        "entry_id": {
+          "name": "Config Entry ID",
+          "description": "Target router instance ID."
+        }
+      }
+    },
+    "save_profile": {
+      "name": "Save or Update Profile",
+      "description": "Creates a new parental control profile or updates an existing one.",
+      "fields": {
+        "name": {
+          "name": "Name",
+          "description": "Profile or child name."
+        },
+        "profile_id": {
+          "name": "Profile ID",
+          "description": "Optional ID (leave blank to auto-generate a new profile)."
+        },
+        "mac_addresses": {
+          "name": "Device MAC Addresses",
+          "description": "List of MAC addresses assigned to this profile."
+        },
+        "is_enabled": {
+          "name": "Enforce rules",
+          "description": "Whether this profile's restrictions are active."
+        },
+        "schedule": {
+          "name": "Weekly block schedule",
+          "description": "Schedule object with active_days, start_time, stop_time, and enabled."
+        },
+        "entry_id": {
+          "name": "Config Entry ID",
+          "description": "Target router instance ID."
+        }
+      }
+    },
+    "delete_profile": {
+      "name": "Delete Profile",
+      "description": "Removes a parental control profile and unbinds its network rules.",
+      "fields": {
+        "profile_id": {
+          "name": "Profile ID",
+          "description": "ID of profile to delete."
+        },
+        "entry_id": {
+          "name": "Config Entry ID",
+          "description": "Target router instance ID."
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,137 @@
+pause_profile:
+  name: Pause Internet Access
+  description: Temporarily or indefinitely blocks internet access for all devices in a parental profile.
+  fields:
+    profile_id:
+      name: Profile ID
+      description: The ID of the parental control profile to pause.
+      required: true
+      example: "a1b2c3d4"
+      selector:
+        text:
+    duration:
+      name: Pause Duration
+      description: How long to pause internet access.
+      required: false
+      default: "indefinite"
+      selector:
+        select:
+          options:
+            - label: "15 Minutes"
+              value: "15m"
+            - label: "30 Minutes"
+              value: "30m"
+            - label: "1 Hour"
+              value: "60m"
+            - label: "Until Tomorrow Morning (7:00 AM)"
+              value: "until_tomorrow"
+            - label: "Indefinite (Until Manually Resumed)"
+              value: "indefinite"
+    entry_id:
+      name: Config Entry ID
+      description: Target router instance ID (optional if only one OpenWrt router is configured).
+      required: false
+      selector:
+        text:
+
+resume_profile:
+  name: Resume Internet Access
+  description: Manually unpauses internet access for a parental profile.
+  fields:
+    profile_id:
+      name: Profile ID
+      description: The ID of the parental control profile to resume.
+      required: true
+      example: "a1b2c3d4"
+      selector:
+        text:
+    entry_id:
+      name: Config Entry ID
+      description: Target router instance ID (optional if only one router configured).
+      required: false
+      selector:
+        text:
+
+set_profile_enabled:
+  name: Set Profile Rule Enforcement
+  description: Toggles whether rules (schedule and pauses) are enforced or bypassed.
+  fields:
+    profile_id:
+      name: Profile ID
+      description: The ID of the parental control profile.
+      required: true
+      example: "a1b2c3d4"
+      selector:
+        text:
+    enabled:
+      name: Enabled
+      description: True to enforce rules; False to bypass all rules for this profile.
+      required: true
+      default: true
+      selector:
+        boolean:
+    entry_id:
+      name: Config Entry ID
+      description: Target router instance ID.
+      required: false
+      selector:
+        text:
+
+save_profile:
+  name: Save or Update Profile
+  description: Creates a new parental control profile or updates an existing one.
+  fields:
+    name:
+      name: Name
+      description: Profile or child name.
+      required: true
+      example: "Leo"
+      selector:
+        text:
+    profile_id:
+      name: Profile ID
+      description: Optional ID (leave blank to auto-generate a new profile).
+      required: false
+      selector:
+        text:
+    mac_addresses:
+      name: Device MAC Addresses
+      description: List of MAC addresses assigned to this profile.
+      required: false
+      selector:
+        object:
+    is_enabled:
+      name: Enforce rules
+      description: Whether this profile's restrictions are active.
+      required: false
+      selector:
+        boolean:
+    schedule:
+      name: Weekly block schedule
+      description: Schedule object with active_days, start_time, stop_time, and enabled.
+      required: false
+      selector:
+        object:
+    entry_id:
+      name: Config Entry ID
+      description: Target router instance ID.
+      required: false
+      selector:
+        text:
+
+delete_profile:
+  name: Delete Profile
+  description: Removes a parental control profile and unbinds its network rules.
+  fields:
+    profile_id:
+      name: Profile ID
+      description: ID of profile to delete.
+      required: true
+      selector:
+        text:
+    entry_id:
+      name: Config Entry ID
+      description: Target router instance ID.
+      required: false
+      selector:
+        text:
