@@ -172,9 +172,13 @@ class ParentalOptionsFlowHandler(config_entries.OptionsFlow):
                 self._selected_profile_id = selection
                 return await self.async_step_profile_edit()
 
-        profile_choices = {"new": "+ 新增成员档案 / Add New Profile"}
+        is_zh = getattr(self.hass.config, "language", "").startswith("zh")
+        new_label = "+ 新增成员档案" if is_zh else "+ Add New Profile"
+        profile_choices = {"new": new_label}
         for pid, p in coordinator.storage.profiles.items():
-            profile_choices[pid] = f"{p.name} ({len(p.mac_addresses)} 台设备 / devices)"
+            count = len(p.mac_addresses)
+            count_str = f"{count} 台设备" if is_zh else f"{count} devices"
+            profile_choices[pid] = f"{p.name} ({count_str})"
 
         schema = vol.Schema(
             {
@@ -263,15 +267,18 @@ class ParentalOptionsFlowHandler(config_entries.OptionsFlow):
             {m.lower() for m in existing.mac_addresses} if existing else set()
         )
 
+        is_zh = getattr(self.hass.config, "language", "").startswith("zh")
         raw_devices: dict[str, tuple[str, bool, bool]] = {}
         for mac, client in coordinator.clients_by_mac.items():
             mac_lower = mac.lower()
             is_mine = mac_lower in existing_macs_lower
             owner = mac_to_other_profile.get(mac_lower)
 
-            host_str = client.hostname or "未命名设备"
+            unknown_str = "未命名设备" if is_zh else "Unknown Device"
+            host_str = client.hostname or unknown_str
             ip_str = f" ({client.ip})" if client.ip else ""
-            owner_str = f" [已归属: {owner}]" if owner else ""
+            owner_label = f"已归属: {owner}" if is_zh else f"Assigned: {owner}"
+            owner_str = f" [{owner_label}]" if owner else ""
             label = f"{host_str}{ip_str} - {mac.upper()}{owner_str}"
             raw_devices[mac_lower] = (label, is_mine, bool(owner))
 
@@ -280,8 +287,9 @@ class ParentalOptionsFlowHandler(config_entries.OptionsFlow):
             for mac in existing.mac_addresses:
                 mac_lower = mac.lower()
                 if mac_lower not in raw_devices:
+                    bound_label = f"已绑定设备 - {mac.upper()}" if is_zh else f"Assigned Device - {mac.upper()}"
                     raw_devices[mac_lower] = (
-                        f"已绑定设备 - {mac.upper()}",
+                        bound_label,
                         True,
                         False,
                     )
