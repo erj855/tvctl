@@ -1,0 +1,251 @@
+#!/bin/sh
+# tvctl - TV 设备网络管控一键管理
+# 双写结构: fw4 规则 no_tv_rule (REJECT) + OpenClash 代理黑名单 lan_ac_black_macs
+# 用法: tvctl list | status | add <MAC|设备名> | del <MAC|设备名> | off | on | sync [MAC...]
+# sync: 一次性把封禁名单对齐到给定完整列表（供 Home Assistant 集成调用，幂等）
+
+FW_RULE="no_tv_rule"
+OC_LIST="lan_ac_black_macs"
+SAVE_FILE="/root/.tvctl.saved"
+
+norm_mac() {
+    m=$(echo "$1" | tr -d ' ' | tr 'a-f' 'A-F')
+    echo "$m" | grep -qE '^([0-9A-F]{2}:){5}[0-9A-F]{2}$' || return 1
+    echo "$m"
+}
+
+name_to_mac() {
+    local i=0
+    while uci -q get dhcp.@host[$i] >/dev/null 2>&1; do
+        if [ "$(uci -q get dhcp.@host[$i].name)" = "$1" ]; then
+            uci -q get dhcp.@host[$i].mac && return 0
+        fi
+        i=$((i+1))
+    done
+    return 1
+}
+
+mac_to_name() {
+    local i=0
+    while uci -q get dhcp.@host[$i] >/dev/null 2>&1; do
+        hmac=$(uci -q get dhcp.@host[$i].mac | tr -d ' ')
+        if [ "$(echo $hmac | tr 'a-f' 'A-F')" = "$1" ]; then
+            uci -q get dhcp.@host[$i].name && return 0
+        fi
+        i=$((i+1))
+    done
+    echo "-"
+}
+
+resolve() {
+    if norm_mac "$1" >/dev/null 2>&1; then
+        norm_mac "$1"
+    elif mac=$(name_to_mac "$1"); then
+        norm_mac "$mac"
+    else
+        return 1
+    fi
+}
+
+in_fw()  { uci -q get firewall.$FW_RULE.src_mac | grep -qi "$1"; }
+in_oc()  { uci -q get openclash.config.$OC_LIST | grep -qi "$1"; }
+
+do_add() {
+    m=$(resolve "$1") || { echo "错误: 找不到 '$1'（既不是合法 MAC，也不在 DHCP 主机绑定里）"; exit 1; }
+    if in_fw "$m"; then echo "fw4 NoTV      : 已存在 $m"; else
+        uci add_list firewall.$FW_RULE.src_mac="$m"; echo "fw4 NoTV      : + $m"
+    fi
+    if in_oc "$m"; then echo "OpenClash黑名单: 已存在 $m"; else
+        uci add_list openclash.config.$OC_LIST="$m"
+        nft add element inet fw4 $OC_LIST \{ $m \} 2>/dev/null
+        echo "OpenClash黑名单: + $m"
+    fi
+    uci commit firewall
+    uci commit openclash
+    /etc/init.d/firewall reload >/dev/null 2>&1
+    echo "已生效。设备: $(mac_to_name $m)"
+}
+
+do_del() {
+    m=$(resolve "$1") || { echo "错误: 找不到 '$1'"; exit 1; }
+    if in_fw "$m"; then uci del_list firewall.$FW_RULE.src_mac="$m"; echo "fw4 NoTV      : - $m"; else
+        echo "fw4 NoTV      : 无此 MAC"
+    fi
+    if in_oc "$m"; then
+        uci del_list openclash.config.$OC_LIST="$m"
+        nft delete element inet fw4 $OC_LIST \{ $m \} 2>/dev/null
+        echo "OpenClash黑名单: - $m"
+    else
+        echo "OpenClash黑名单: 无此 MAC"
+    fi
+    uci commit firewall
+    uci commit openclash
+    /etc/init.d/firewall reload >/dev/null 2>&1
+    echo "已生效。设备: $(mac_to_name $m)"
+}
+
+do_list() {
+    printf "%-18s %-16s %-6s %-6s\n" "MAC" "设备名" "NoTV" "黑名单"
+    seen=""
+    for m in $(uci -q get firewall.$FW_RULE.src_mac); do
+        m=$(norm_mac "$m") || continue
+        printf "%-18s %-16s %-6s %-6s\n" "$m" "$(mac_to_name $m)" "是" "$(in_oc $m && echo 是 || echo 否)"
+        seen="$seen $m"
+    done
+    for m in $(uci -q get openclash.config.$OC_LIST); do
+        m=$(norm_mac "$m") || continue
+        echo "$seen" | grep -qi "$m" && continue
+        printf "%-18s %-16s %-6s %-6s\n" "$m" "$(mac_to_name $m)" "否" "是"
+    done
+}
+
+do_status() {
+    echo "== NoTV 阻断计数 (fw4 forward 链) =="
+    nft list ruleset 2>/dev/null | grep 'NoTV' | grep counter | sed 's/^[[:space:]]*//'
+    echo "== 黑名单绕过计数 (OpenClash 劫持链) =="
+    nft list chain inet fw4 openclash 2>/dev/null | grep black_macs | sed 's/^[[:space:]]*//'
+    echo "== 受管设备 =="
+    do_list
+}
+
+do_off() {
+    if [ "$(uci -q get firewall.$FW_RULE.enabled)" = "0" ]; then
+        echo "管控已经是停止状态（名单存于 $SAVE_FILE），恢复请执行: tvctl on"
+        return
+    fi
+    macs=$(uci -q get firewall.$FW_RULE.src_mac)
+    for m in $(uci -q get openclash.config.$OC_LIST); do
+        echo "$macs" | grep -qi "$m" || macs="$macs $m"
+    done
+    if [ -z "$macs" ]; then echo "当前没有受管设备"; return; fi
+    printf '%s\n' $macs > $SAVE_FILE
+    for m in $macs; do
+        uci del_list firewall.$FW_RULE.src_mac="$m" 2>/dev/null
+        uci del_list openclash.config.$OC_LIST="$m" 2>/dev/null
+        nft delete element inet fw4 $OC_LIST \{ $m \} 2>/dev/null
+        echo "- 解除 $m ($(mac_to_name $m))"
+    done
+    uci set firewall.$FW_RULE.enabled='0'
+    uci commit firewall
+    uci commit openclash
+    /etc/init.d/firewall reload >/dev/null 2>&1
+    echo "已停止全部管控（规则整体停用，避免空规则误拦全网）。"
+    echo "名单已保存到 $SAVE_FILE，恢复请执行: tvctl on"
+}
+
+do_on() {
+    if [ "$(uci -q get firewall.$FW_RULE.enabled)" != "0" ]; then
+        echo "管控当前是开启状态，无需恢复"
+        return
+    fi
+    [ -f $SAVE_FILE ] || { echo "没有保存的管控名单，请用 'tvctl add' 逐台添加"; return 1; }
+    uci -q delete firewall.$FW_RULE.enabled
+    for m in $(cat $SAVE_FILE); do
+        in_fw "$m" || uci add_list firewall.$FW_RULE.src_mac="$m"
+        if ! in_oc "$m"; then
+            uci add_list openclash.config.$OC_LIST="$m"
+            nft add element inet fw4 $OC_LIST \{ $m \} 2>/dev/null
+        fi
+        echo "+ 恢复 $m ($(mac_to_name $m))"
+    done
+    uci commit firewall
+    uci commit openclash
+    /etc/init.d/firewall reload >/dev/null 2>&1
+    echo "已恢复全部管控。"
+    do_list
+}
+
+# 一次性把管控名单对齐到给定的完整 MAC 列表。
+# 语义：调用后受管设备恰好等于传入列表；不再逐个 add/del，减少防火墙 reload 次数。
+# 供 Home Assistant 集成通过 ubus file exec 调用（tvctl sync M1 M2 ...）。
+do_sync() {
+    # 解析并规范化所有目标 MAC（支持设备名），去重
+    targets=""
+    for x in "$@"; do
+        m=$(resolve "$x") || { echo "错误: 无法解析 '$x'（既不是合法 MAC，也不在 DHCP 主机绑定里）"; exit 1; }
+        echo " $targets " | grep -qi " $m " || targets="${targets:+$targets }$m"
+    done
+
+    changed=0
+    # fw4 侧精确对齐（目标里没有的移除，缺的补上）
+    for m in $(uci -q get firewall.$FW_RULE.src_mac); do
+        nm=$(norm_mac "$m") || continue
+        echo " $targets " | grep -qi " $nm " && continue
+        uci del_list firewall.$FW_RULE.src_mac="$m" 2>/dev/null
+        echo "- fw4 解除 $(mac_to_name $nm) ($nm)"
+        changed=1
+    done
+    for m in $targets; do
+        in_fw "$m" && continue
+        uci add_list firewall.$FW_RULE.src_mac="$m" 2>/dev/null
+        echo "+ fw4 封禁 $(mac_to_name $m) ($m)"
+        changed=1
+    done
+
+    # OpenClash 黑名单侧精确对齐（防止流量经代理绕过 fw4 规则）
+    # 两处独立对齐，避免"已在 fw4 就不补黑名单"导致双写不一致。
+    for m in $(uci -q get openclash.config.$OC_LIST); do
+        nm=$(norm_mac "$m") || continue
+        echo " $targets " | grep -qi " $nm " && continue
+        uci del_list openclash.config.$OC_LIST="$m" 2>/dev/null
+        nft delete element inet fw4 $OC_LIST \{ $m \} 2>/dev/null
+        echo "- 黑名单解除 $(mac_to_name $nm) ($nm)"
+        changed=1
+    done
+    for m in $targets; do
+        in_oc "$m" && continue
+        uci add_list openclash.config.$OC_LIST="$m" 2>/dev/null
+        nft add element inet fw4 $OC_LIST \{ $m \} 2>/dev/null
+        echo "+ 黑名单封禁 $(mac_to_name $m) ($m)"
+        changed=1
+    done
+
+    # 空名单必须整体停用规则：fw4 规则无 src_mac 时会拦截所有流量（危险）
+    if [ -n "$targets" ]; then
+        uci -q delete firewall.$FW_RULE.enabled 2>/dev/null
+    else
+        uci set firewall.$FW_RULE.enabled='0'
+    fi
+
+    uci commit firewall
+    uci commit openclash
+    /etc/init.d/firewall reload >/dev/null 2>&1
+    echo "OK synced $(echo $targets | wc -w | tr -d ' ') device(s); changed=$changed"
+}
+
+# 以 JSON 输出当前受管 MAC（供 HA 侧可选核对；无 jq 依赖，手工拼 JSON）
+do_list_json() {
+    printf '['
+    first=1
+    for m in $(uci -q get firewall.$FW_RULE.src_mac); do
+        nm=$(norm_mac "$m") || continue
+        [ $first -eq 1 ] || printf ','
+        printf '"%s"' "$nm"
+        first=0
+    done
+    for m in $(uci -q get openclash.config.$OC_LIST); do
+        nm=$(norm_mac "$m") || continue
+        skip=0
+        for a in $(uci -q get firewall.$FW_RULE.src_mac); do
+            an=$(norm_mac "$a") || continue
+            [ "$an" = "$nm" ] && skip=1 && break
+        done
+        [ $skip -eq 1 ] && continue
+        [ $first -eq 1 ] || printf ','
+        printf '"%s"' "$nm"
+        first=0
+    done
+    printf ']'
+}
+
+case "$1" in
+    add)    shift; [ -n "$1" ] || { echo "用法: tvctl add <MAC|设备名>"; exit 1; }; do_add "$1" ;;
+    del)    shift; [ -n "$1" ] || { echo "用法: tvctl del <MAC|设备名>"; exit 1; }; do_del "$1" ;;
+    list)   do_list ;;
+    list-json) do_list_json ;;
+    status) do_status ;;
+    off)    do_off ;;
+    on)     do_on ;;
+    sync)   shift; do_sync "$@" ;;
+    *) echo "用法: tvctl {list|list-json|status|add|del|off|on|sync [MAC...]}"; echo "  示例: tvctl add Apple-TV  /  tvctl del ec:a9:07:17:21:16"; echo "        tvctl sync M1 M2  = 对齐到完整名单(HA集成用)  /  tvctl sync = 清空"; echo "        tvctl off = 停止全部管控(名单存档)   tvctl on = 一键恢复"; echo "        tvctl status = 查看阻断计数与设备列表" ;;
+esac

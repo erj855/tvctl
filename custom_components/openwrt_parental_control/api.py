@@ -421,8 +421,57 @@ class OpenWrtApiClient:
 
         return list(clients.values())
 
+    # ── tvctl integration ─────────────────────────────────────────────────────
+    # The router-side `tvctl` script owns the actual blocking logic (dual-write:
+    # fw4 `no_tv_rule` REJECT + OpenClash `lan_ac_black_macs`). This integration
+    # only pushes the authoritative full MAC list to `tvctl sync` over the
+    # existing ubus JSON-RPC session, using rpcd-mod-file's `file exec` method.
+    # Requires: /usr/bin/tvctl deployed + rpcd ACL granting exec on that path.
+
+    TVCTL_PATH = "/usr/bin/tvctl"
+
+    async def _async_exec_tvctl(self, *args: str) -> str:
+        """Run /usr/bin/tvctl <args> via ubus file exec; return stdout text."""
+        result = await self.async_call(
+            "file",
+            "exec",
+            {
+                "command": self.TVCTL_PATH,
+                "params": [str(a) for a in args],
+            },
+        )
+        # rpcd-mod-file returns {"stdout": "...", "stderr": "...", "code": int}
+        if isinstance(result, dict):
+            code = result.get("code")
+            stdout = result.get("stdout") or ""
+            stderr = result.get("stderr") or ""
+            if code not in (None, 0):
+                raise OpenWrtApiError(
+                    f"tvctl {args[0] if args else ''} exited {code}: {stderr.strip() or stdout.strip()}"
+                )
+            return stdout
+        return ""
+
     async def async_sync_firewall_blocks(self, blocked_macs: list[str]) -> bool:
-        """Enforce WAN blocking rules for all designated MACs via UCI firewall."""
+        """Push the full blocklist to the router's tvctl script (dual-write)."""
+        macs = []
+        for mac in blocked_macs:
+            norm = normalize_mac(mac)
+            if norm:
+                macs.append(norm)
+        try:
+            stdout = await self._async_exec_tvctl("sync", *macs)
+            _LOGGER.info("tvctl sync enforced for MACs: %s", macs)
+            return True
+        except OpenWrtApiError as err:
+            _LOGGER.error("tvctl sync failed: %s", err)
+            return False
+        except Exception as err:
+            _LOGGER.error("Unexpected error calling tvctl: %s", err)
+            return False
+
+    async def _async_legacy_sync_firewall_blocks(self, blocked_macs: list[str]) -> bool:
+        """Legacy direct-UCI firewall implementation ( kept for reference / rollback )."""
         rule_name = "parentcontrol_block"
         macs_upper = [m.upper().replace("-", ":") for m in blocked_macs if m]
 

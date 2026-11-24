@@ -1,0 +1,21 @@
+{
+	"openwrt-parental-control": {
+		"description": "Allow Home Assistant OpenWrt Parental Control integration to invoke tvctl via ubus file exec",
+		"read": {
+			"ubus": {
+				"file": [ "exec" ]
+			},
+			"file": {
+				"/usr/bin/tvctl": [ "exec" ]
+			}
+		},
+		"write": {
+			"ubus": {
+				"file": [ "exec" ]
+			},
+			"file": {
+				"/usr/bin/tvctl": [ "exec" ]
+			}
+		}
+	}
+}
